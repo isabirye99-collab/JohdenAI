@@ -77,12 +77,12 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!loaded) return;
     try { localStorage.setItem(`johden-ai-workspace-v1:${userId}`, JSON.stringify({ prospects, drafts, tasks })); } catch { /* Storage may be disabled. */ }
-  }, [prospects, drafts, tasks, loaded]);
+  }, [prospects, drafts, tasks, loaded, userId]);
 
   const pending = drafts.filter((d) => d.status === "Needs approval").length;
   const filteredProspects = useMemo(() => prospects.filter((p) => [p.company, p.contact, p.industry, p.stage].join(" ").toLowerCase().includes(query.toLowerCase())), [prospects, query]);
