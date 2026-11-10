@@ -22,9 +22,10 @@ export async function signUp(formData: FormData) {
   const supabase = await createClient();
   const h = await headers();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || h.get("origin") || "http://localhost:3000";
-  const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${siteUrl}/auth/callback` } });
+  const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${siteUrl}/auth/callback` } });
   if (error) go("/signup", "error", error.message);
-  go("/login", "message", "Account created. Check your email if confirmation is enabled.");
+  if (data.session) redirect("/dashboard");
+  go("/login", "message", "Account created. Check your email to confirm, then sign in.");
 }
 
 export async function signOut() {
