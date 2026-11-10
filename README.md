@@ -48,3 +48,25 @@ The service worker caches only the public offline fallback and manifest. It does
 ## Safety
 
 Message approval in the dashboard does not send a message. Outreach remains manual. Google Calendar writes and WhatsApp sending are not enabled by this authentication setup. Any future public database tables must have RLS enabled with policies scoped to the authenticated user (for example, `auth.uid()`).
+
+
+## Deploy online for free (Netlify)
+
+Netlify supports this app's Next.js App Router, SSR, Server Actions, and route handlers through its maintained OpenNext adapter.
+
+1. Create or sign in to a Netlify account at https://app.netlify.com/signup.
+2. Choose **Add new project → Import an existing project → GitHub**.
+3. Authorize access to `isabirye99-collab/JohdenAI`.
+4. Select the `feat/supabase-auth-pwa` branch for the first deployment preview. Keep the app private while configuring it.
+5. Netlify should detect Next.js. The repository includes `netlify.toml` with `npm run build` and Node.js 22.
+6. Add these environment variables in **Project configuration → Environment variables** for both Deploy Previews and Production:
+   - `NEXT_PUBLIC_SUPABASE_URL` = `https://emlgnephfeiyxqqlcnvz.supabase.co`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = the JohdenAI project's publishable key
+   - `NEXT_PUBLIC_SITE_URL` = the final Netlify site URL (for example, `https://your-site-name.netlify.app`)
+7. Deploy the branch. Netlify will assign a free `*.netlify.app` address.
+8. Once the URL exists, add `https://YOUR-SITE.netlify.app/auth/callback` to Supabase **Authentication → URL Configuration → Redirect URLs**, and set the Supabase Site URL to the production address.
+9. Test signup, email confirmation, login, dashboard access, and logout before making the site the production app.
+
+Netlify's Free plan currently includes 300 usage credits per month with a hard limit; sites pause when the monthly allowance is exhausted. Review current plan terms and usage in the Netlify dashboard. A free plan has no service-level commitment, so upgrade if JohdenAI becomes business-critical.
+
+The authentication branch is intentionally kept separate from `main` until the preview build and sign-in flow have been verified.
