@@ -57,6 +57,8 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
   const [online, setOnline] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [notice, setNotice] = useState("");
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +147,33 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
     return () => window.clearTimeout(timeout);
   }, [prospects, drafts, tasks, loaded, userId, online]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("calendar");
+    if (result === "connected") setNotice("Google Calendar connected successfully.");
+    else if (result && result !== "cancelled") setNotice("Google Calendar connection needs attention (" + result.replaceAll("_", " ") + ").");
+    if (result) window.history.replaceState({}, "", window.location.pathname);
+    fetch("/api/google/calendar/status", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => setCalendarConnected(Boolean(data.connected)))
+      .catch(() => setCalendarConnected(false))
+      .finally(() => setCalendarLoading(false));
+  }, []);
+
+  async function disconnectCalendar() {
+    setCalendarLoading(true);
+    try {
+      const response = await fetch("/api/google/calendar/disconnect", { method: "POST" });
+      if (!response.ok) throw new Error("Disconnect failed");
+      setCalendarConnected(false);
+      setNotice("Google Calendar disconnected.");
+    } catch {
+      setNotice("Could not disconnect Google Calendar. Please try again.");
+    } finally {
+      setCalendarLoading(false);
+    }
+  }
+
   const pending = drafts.filter((d) => d.status === "Needs approval").length;
   const filteredProspects = useMemo(() => prospects.filter((p) => [p.company, p.contact, p.industry, p.stage].join(" ").toLowerCase().includes(query.toLowerCase())), [prospects, query]);
 
@@ -186,7 +215,7 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
           {active === "Prospects" && <section><PageHeading eyebrow="PIPELINE" title="Prospects" subtitle="Build a qualified pipeline. Record where each lead came from and what needs to happen next." action={<button className="primary-button" onClick={() => setShowProspectForm(true)}><Plus size={17} /> Add prospect</button>} /><div className="toolbar"><div className="searchbox"><Search size={17} /><input placeholder="Search companies, contacts or industries..." value={query} onChange={(e) => setQuery(e.target.value)} /></div><span className="muted">{filteredProspects.length} records</span></div><div className="table-card"><div className="table-scroll"><table><thead><tr><th>COMPANY</th><th>INDUSTRY</th><th>STAGE</th><th>NEXT STEP</th><th>SOURCE</th></tr></thead><tbody>{filteredProspects.map((p) => <tr key={p.id}><td><strong>{p.company}</strong><small>{p.contact}</small></td><td>{p.industry}</td><td><span className="status-pill">{p.stage}</span></td><td>{p.nextStep}</td><td className="source-cell">{p.source}</td></tr>)}</tbody></table>{filteredProspects.length === 0 && <div className="empty-state">No prospects match this search.</div>}</div></div><p className="helper-line"><ShieldCheck size={15} /> Prospect examples are clearly labelled as sample data. Verify company details and contact permissions before outreach.</p></section>}
           {active === "Message approvals" && <section><PageHeading eyebrow="OUTREACH CONTROL" title="Message approvals" subtitle="Review every message before you send it. Approval here does not send a WhatsApp message." /><div className="draft-list">{drafts.map((d) => <article className="draft-card" key={d.id}><div className="draft-top"><div className="channel-icon"><MessageCircle size={19} /></div><div className="draft-meta"><strong>{d.company}</strong><span>{d.channel} · Created {d.createdAt}</span></div><span className={d.status === "Approved" ? "approved-pill" : "pending-pill"}>{d.status}</span></div><div className="message-preview">{d.message}</div><div className="draft-footer"><span><ShieldCheck size={15} /> Manual sending only</span><div className="button-row">{d.status === "Needs approval" ? <button className="primary-button small" onClick={() => approveDraft(d.id)}><Check size={15} /> Approve draft</button> : <button className="secondary-button small" onClick={() => { navigator.clipboard?.writeText(d.message); setNotice("Approved message copied. You still need to send it manually."); setTimeout(() => setNotice(""), 3500); }}><FileText size={15} /> Copy message</button>}</div></div></article>)}{drafts.length === 0 && <div className="empty-state">No message drafts yet. Drafting with AI will be enabled after the secure API setup.</div>}</div></section>}
           {active === "Tasks" && <section><PageHeading eyebrow="DAILY EXECUTION" title="Tasks" subtitle="Keep the next action visible. Changes are saved to your account and cached on this device for offline use." action={<button className="primary-button" onClick={() => setShowTaskForm(true)}><Plus size={17} /> Add task</button>} /><div className="task-list">{tasks.map((t) => <label key={t.id} className={t.done ? "task-row done" : "task-row"}><input type="checkbox" checked={t.done} onChange={(e) => setTasks((old) => old.map((item) => item.id === t.id ? { ...item, done: e.target.checked } : item))} /><span className="task-check"><Check size={13} /></span><span className="task-title">{t.title}</span><span className="task-due"><Clock3 size={14} />{t.due}</span></label>)}</div></section>}
-          {active === "Calendar" && <section><PageHeading eyebrow="SCHEDULE" title="Calendar" subtitle="The Google Calendar connection will be added after its secure authorization is configured." /><div className="feature-panel"><div className="feature-icon"><CalendarDays size={24} /></div><div><h3>Connect your calendar</h3><p>Once connected, the app can check availability and prepare appointments. It will not create or change events without confirmation.</p><span className="feature-status"><Clock3 size={14} /> Integration not connected</span></div></div><div className="notice-panel"><ShieldCheck size={18} /><p>For now, add follow-up reminders under Tasks. No calendar access has been granted.</p></div></section>}
+          {active === "Calendar" && <section><PageHeading eyebrow="SCHEDULE" title="Calendar" subtitle="Connect Google Calendar to check availability. JohdenAI will not create or change events." /><div className="feature-panel"><div className="feature-icon"><CalendarDays size={24} /></div><div><h3>{calendarConnected ? "Google Calendar connected" : "Connect your Google Calendar"}</h3><p>{calendarConnected ? "Your Google Calendar connection is ready for availability checks." : "Authorize read-only free/busy access. Your calendar events will not be edited."}</p><span className="feature-status"><Clock3 size={14} /> {calendarLoading ? "Checking connection…" : calendarConnected ? "Integration connected" : "Integration not connected"}</span><div className="button-row" style={{ marginTop: 16 }}>{calendarConnected ? <button className="secondary-button" onClick={disconnectCalendar} disabled={calendarLoading}>Disconnect calendar</button> : <a className="primary-button" href="/api/google/calendar/connect" aria-disabled={calendarLoading}>Connect Google Calendar</a>}</div></div></div><div className="notice-panel"><ShieldCheck size={18} /><p>Only availability information is requested. JohdenAI will not create, edit, or delete calendar events.</p></div></section>}
           {active === "Activity log" && <section><PageHeading eyebrow="ACCOUNTABILITY" title="Activity log" subtitle="Workspace records are stored securely in the account database." /><div className="feature-panel"><div className="feature-icon"><Activity size={24} /></div><div><h3>Activity tracking is being prepared</h3><p>Approval decisions, prospect changes, integration events, and future sync results will be recorded when the database is connected.</p></div></div></section>}
           {active === "Settings" && <section><PageHeading eyebrow="WORKSPACE CONTROL" title="Settings" subtitle="Configure your business identity and connected services." /><div className="settings-grid"><div className="setting-card"><div className="setting-title"><BriefcaseBusiness size={18} /><strong>Business profile</strong></div><p>Johden Business Consultancy Services</p><span className="feature-status">Basic profile · Needs verification</span></div><div className="setting-card"><div className="setting-title"><Sparkles size={18} /><strong>AI assistant</strong></div><p>Research, summarize prospects, and draft outreach for your approval.</p><span className="feature-status">Not connected</span></div><div className="setting-card"><div className="setting-title"><MessageCircle size={18} /><strong>WhatsApp Business</strong></div><p>Keep your existing number. Compatibility will be checked before connecting.</p><span className="feature-status">Not connected · No messages sent</span></div><div className="setting-card"><div className="setting-title"><Cloud size={18} /><strong>Cloud sync</strong></div><p>Your workspace is stored in Supabase and cached locally for offline access.</p><span className="feature-status">{online ? "Device online" : "Offline — local changes only"}</span></div></div></section>}
         </div>
