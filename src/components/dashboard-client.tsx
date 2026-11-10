@@ -1,6 +1,7 @@
 "use client";
 
 import { signOut } from "@/app/actions";
+import { createClient } from "@/lib/supabase/client";
 
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -58,22 +59,71 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     setOnline(navigator.onLine);
     const onOnline = () => setOnline(true);
     const onOffline = () => setOnline(false);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
-    try {
-      const saved = localStorage.getItem(`johden-ai-workspace-v1:${userId}`);
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (Array.isArray(data.prospects)) setProspects(data.prospects);
-        if (Array.isArray(data.drafts)) setDrafts(data.drafts);
-        if (Array.isArray(data.tasks)) setTasks(data.tasks);
+
+    async function loadWorkspace() {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("johden_workspace_data")
+        .select("prospects,drafts,tasks")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) {
+        setNotice("Cloud data could not be loaded. Your device copy is still available.");
+        try {
+          const cached = localStorage.getItem(`johden-ai-workspace-v1:${userId}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed.prospects)) setProspects(parsed.prospects);
+            if (Array.isArray(parsed.drafts)) setDrafts(parsed.drafts);
+            if (Array.isArray(parsed.tasks)) setTasks(parsed.tasks);
+          }
+        } catch { /* Keep starter data if local cache is unavailable. */ }
+      } else if (data) {
+        setProspects(Array.isArray(data.prospects) ? data.prospects : []);
+        setDrafts(Array.isArray(data.drafts) ? data.drafts : []);
+        setTasks(Array.isArray(data.tasks) ? data.tasks : []);
+      } else {
+        // Migrate this account's existing device data on its first cloud visit.
+        let cached: { prospects?: Prospect[]; drafts?: Draft[]; tasks?: Task[] } | null = null;
+        try {
+          const raw = localStorage.getItem(`johden-ai-workspace-v1:${userId}`);
+          if (raw) cached = JSON.parse(raw);
+        } catch { /* Ignore an invalid local cache. */ }
+        const initial = {
+          prospects: Array.isArray(cached?.prospects) ? cached.prospects : initialProspects,
+          drafts: Array.isArray(cached?.drafts) ? cached.drafts : initialDrafts,
+          tasks: Array.isArray(cached?.tasks) ? cached.tasks : initialTasks,
+        };
+        setProspects(initial.prospects);
+        setDrafts(initial.drafts);
+        setTasks(initial.tasks);
+        const { error: migrationError } = await supabase.from("johden_workspace_data").upsert(
+          { user_id: userId, ...initial, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" }
+        );
+        if (cancelled) return;
+        if (migrationError) setNotice("Your device data is available, but its first cloud save needs attention.");
+        else setNotice("Your existing workspace has been copied to secure cloud storage.");
       }
-    } catch { /* Ignore invalid local cache and use safe starter data. */ }
-    setLoaded(true);
+      if (!cancelled) setLoaded(true);
+    }
+
+    loadWorkspace().catch(() => {
+      if (!cancelled) {
+        setNotice("Cloud connection unavailable. Changes will stay on this device until it reconnects.");
+        setLoaded(true);
+      }
+    });
     return () => {
+      cancelled = true;
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
@@ -81,8 +131,19 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
 
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem(`johden-ai-workspace-v1:${userId}`, JSON.stringify({ prospects, drafts, tasks })); } catch { /* Storage may be disabled. */ }
-  }, [prospects, drafts, tasks, loaded, userId]);
+    const snapshot = { prospects, drafts, tasks };
+    try { localStorage.setItem(`johden-ai-workspace-v1:${userId}`, JSON.stringify(snapshot)); } catch { /* Browser storage may be unavailable. */ }
+    if (!online) return;
+    const timeout = window.setTimeout(async () => {
+      const supabase = createClient();
+      const { error } = await supabase.from("johden_workspace_data").upsert(
+        { user_id: userId, ...snapshot, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+      if (error) setNotice("Cloud save failed. Your latest changes remain on this device.");
+    }, 500);
+    return () => window.clearTimeout(timeout);
+  }, [prospects, drafts, tasks, loaded, userId, online]);
 
   const pending = drafts.filter((d) => d.status === "Needs approval").length;
   const filteredProspects = useMemo(() => prospects.filter((p) => [p.company, p.contact, p.industry, p.stage].join(" ").toLowerCase().includes(query.toLowerCase())), [prospects, query]);
@@ -92,13 +153,13 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
     if (!company.trim()) return;
     setProspects((old) => [{ id: crypto.randomUUID(), company: company.trim(), contact: contact.trim() || "Not yet verified", industry, stage: "New prospect", nextStep: "Research company and verify contact", source: "Manually added", updatedAt: "Just now" }, ...old]);
     setCompany(""); setContact(""); setShowProspectForm(false); setActive("Prospects");
-    setNotice("Prospect saved on this device."); setTimeout(() => setNotice(""), 3500);
+    setNotice("Prospect saved. Syncing securely to your account."); setTimeout(() => setNotice(""), 3500);
   }
   function addTask(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!taskText.trim()) return;
     setTasks((old) => [{ id: crypto.randomUUID(), title: taskText.trim(), due: "Today", done: false }, ...old]);
-    setTaskText(""); setShowTaskForm(false); setNotice("Task saved on this device."); setTimeout(() => setNotice(""), 3500);
+    setTaskText(""); setShowTaskForm(false); setNotice("Task saved. Syncing securely to your account."); setTimeout(() => setNotice(""), 3500);
   }
   function approveDraft(id: string) {
     setDrafts((old) => old.map((d) => d.id === id ? { ...d, status: "Approved" } : d));
@@ -124,16 +185,16 @@ export default function DashboardClient({ userId, userEmail }: { userId: string;
           {active === "Overview" && <Overview prospects={prospects} pending={pending} tasks={tasks} setActive={setActive} setShowProspectForm={setShowProspectForm} setShowTaskForm={setShowTaskForm} />}
           {active === "Prospects" && <section><PageHeading eyebrow="PIPELINE" title="Prospects" subtitle="Build a qualified pipeline. Record where each lead came from and what needs to happen next." action={<button className="primary-button" onClick={() => setShowProspectForm(true)}><Plus size={17} /> Add prospect</button>} /><div className="toolbar"><div className="searchbox"><Search size={17} /><input placeholder="Search companies, contacts or industries..." value={query} onChange={(e) => setQuery(e.target.value)} /></div><span className="muted">{filteredProspects.length} records</span></div><div className="table-card"><div className="table-scroll"><table><thead><tr><th>COMPANY</th><th>INDUSTRY</th><th>STAGE</th><th>NEXT STEP</th><th>SOURCE</th></tr></thead><tbody>{filteredProspects.map((p) => <tr key={p.id}><td><strong>{p.company}</strong><small>{p.contact}</small></td><td>{p.industry}</td><td><span className="status-pill">{p.stage}</span></td><td>{p.nextStep}</td><td className="source-cell">{p.source}</td></tr>)}</tbody></table>{filteredProspects.length === 0 && <div className="empty-state">No prospects match this search.</div>}</div></div><p className="helper-line"><ShieldCheck size={15} /> Prospect examples are clearly labelled as sample data. Verify company details and contact permissions before outreach.</p></section>}
           {active === "Message approvals" && <section><PageHeading eyebrow="OUTREACH CONTROL" title="Message approvals" subtitle="Review every message before you send it. Approval here does not send a WhatsApp message." /><div className="draft-list">{drafts.map((d) => <article className="draft-card" key={d.id}><div className="draft-top"><div className="channel-icon"><MessageCircle size={19} /></div><div className="draft-meta"><strong>{d.company}</strong><span>{d.channel} · Created {d.createdAt}</span></div><span className={d.status === "Approved" ? "approved-pill" : "pending-pill"}>{d.status}</span></div><div className="message-preview">{d.message}</div><div className="draft-footer"><span><ShieldCheck size={15} /> Manual sending only</span><div className="button-row">{d.status === "Needs approval" ? <button className="primary-button small" onClick={() => approveDraft(d.id)}><Check size={15} /> Approve draft</button> : <button className="secondary-button small" onClick={() => { navigator.clipboard?.writeText(d.message); setNotice("Approved message copied. You still need to send it manually."); setTimeout(() => setNotice(""), 3500); }}><FileText size={15} /> Copy message</button>}</div></div></article>)}{drafts.length === 0 && <div className="empty-state">No message drafts yet. Drafting with AI will be enabled after the secure API setup.</div>}</div></section>}
-          {active === "Tasks" && <section><PageHeading eyebrow="DAILY EXECUTION" title="Tasks" subtitle="Keep the next action visible. Changes are saved locally on this device for now." action={<button className="primary-button" onClick={() => setShowTaskForm(true)}><Plus size={17} /> Add task</button>} /><div className="task-list">{tasks.map((t) => <label key={t.id} className={t.done ? "task-row done" : "task-row"}><input type="checkbox" checked={t.done} onChange={(e) => setTasks((old) => old.map((item) => item.id === t.id ? { ...item, done: e.target.checked } : item))} /><span className="task-check"><Check size={13} /></span><span className="task-title">{t.title}</span><span className="task-due"><Clock3 size={14} />{t.due}</span></label>)}</div></section>}
+          {active === "Tasks" && <section><PageHeading eyebrow="DAILY EXECUTION" title="Tasks" subtitle="Keep the next action visible. Changes are saved to your account and cached on this device for offline use." action={<button className="primary-button" onClick={() => setShowTaskForm(true)}><Plus size={17} /> Add task</button>} /><div className="task-list">{tasks.map((t) => <label key={t.id} className={t.done ? "task-row done" : "task-row"}><input type="checkbox" checked={t.done} onChange={(e) => setTasks((old) => old.map((item) => item.id === t.id ? { ...item, done: e.target.checked } : item))} /><span className="task-check"><Check size={13} /></span><span className="task-title">{t.title}</span><span className="task-due"><Clock3 size={14} />{t.due}</span></label>)}</div></section>}
           {active === "Calendar" && <section><PageHeading eyebrow="SCHEDULE" title="Calendar" subtitle="The Google Calendar connection will be added after its secure authorization is configured." /><div className="feature-panel"><div className="feature-icon"><CalendarDays size={24} /></div><div><h3>Connect your calendar</h3><p>Once connected, the app can check availability and prepare appointments. It will not create or change events without confirmation.</p><span className="feature-status"><Clock3 size={14} /> Integration not connected</span></div></div><div className="notice-panel"><ShieldCheck size={18} /><p>For now, add follow-up reminders under Tasks. No calendar access has been granted.</p></div></section>}
-          {active === "Activity log" && <section><PageHeading eyebrow="ACCOUNTABILITY" title="Activity log" subtitle="A record of important actions will be stored in the secure database in a later setup step." /><div className="feature-panel"><div className="feature-icon"><Activity size={24} /></div><div><h3>Activity tracking is being prepared</h3><p>Approval decisions, prospect changes, integration events, and future sync results will be recorded when the database is connected.</p></div></div></section>}
-          {active === "Settings" && <section><PageHeading eyebrow="WORKSPACE CONTROL" title="Settings" subtitle="Configure your business identity and connected services." /><div className="settings-grid"><div className="setting-card"><div className="setting-title"><BriefcaseBusiness size={18} /><strong>Business profile</strong></div><p>Johden Business Consultancy Services</p><span className="feature-status">Basic profile · Needs verification</span></div><div className="setting-card"><div className="setting-title"><Sparkles size={18} /><strong>AI assistant</strong></div><p>Research, summarize prospects, and draft outreach for your approval.</p><span className="feature-status">Not connected</span></div><div className="setting-card"><div className="setting-title"><MessageCircle size={18} /><strong>WhatsApp Business</strong></div><p>Keep your existing number. Compatibility will be checked before connecting.</p><span className="feature-status">Not connected · No messages sent</span></div><div className="setting-card"><div className="setting-title"><Cloud size={18} /><strong>Cloud sync</strong></div><p>Local-first demo storage is enabled. Secure account sync is not configured yet.</p><span className="feature-status">{online ? "Device online" : "Offline — local changes only"}</span></div></div></section>}
+          {active === "Activity log" && <section><PageHeading eyebrow="ACCOUNTABILITY" title="Activity log" subtitle="Workspace records are stored securely in the account database." /><div className="feature-panel"><div className="feature-icon"><Activity size={24} /></div><div><h3>Activity tracking is being prepared</h3><p>Approval decisions, prospect changes, integration events, and future sync results will be recorded when the database is connected.</p></div></div></section>}
+          {active === "Settings" && <section><PageHeading eyebrow="WORKSPACE CONTROL" title="Settings" subtitle="Configure your business identity and connected services." /><div className="settings-grid"><div className="setting-card"><div className="setting-title"><BriefcaseBusiness size={18} /><strong>Business profile</strong></div><p>Johden Business Consultancy Services</p><span className="feature-status">Basic profile · Needs verification</span></div><div className="setting-card"><div className="setting-title"><Sparkles size={18} /><strong>AI assistant</strong></div><p>Research, summarize prospects, and draft outreach for your approval.</p><span className="feature-status">Not connected</span></div><div className="setting-card"><div className="setting-title"><MessageCircle size={18} /><strong>WhatsApp Business</strong></div><p>Keep your existing number. Compatibility will be checked before connecting.</p><span className="feature-status">Not connected · No messages sent</span></div><div className="setting-card"><div className="setting-title"><Cloud size={18} /><strong>Cloud sync</strong></div><p>Your workspace is stored in Supabase and cached locally for offline access.</p><span className="feature-status">{online ? "Device online" : "Offline — local changes only"}</span></div></div></section>}
         </div>
         <footer className="footer"><span>JOHDEN AI <span className="dot">•</span> EARLY ACCESS</span><span><ShieldCheck size={14} /> Your approval is required for outreach</span></footer>
       </section>
 
       {showProspectForm && <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowProspectForm(false); }}><form className="modal" onSubmit={addProspect}><div className="modal-heading"><div><span className="eyebrow">PIPELINE</span><h2>Add prospect</h2></div><button type="button" className="icon-button" onClick={() => setShowProspectForm(false)} aria-label="Close"><X size={18} /></button></div><label>Company name<input required autoFocus value={company} onChange={(e) => setCompany(e.target.value)} placeholder="e.g. Acme Uganda Ltd" /></label><label>Contact person or public business contact<input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Name or contact to verify" /></label><label>Industry<select value={industry} onChange={(e) => setIndustry(e.target.value)}><option>Professional services</option><option>Construction</option><option>Healthcare</option><option>Education</option><option>Retail and distribution</option><option>Hospitality</option><option>Technology</option><option>Other</option></select></label><div className="modal-note"><ShieldCheck size={16} /> Verify the company and contact source before using any details for outreach.</div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowProspectForm(false)}>Cancel</button><button className="primary-button" type="submit">Save prospect</button></div></form></div>}
-      {showTaskForm && <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowTaskForm(false); }}><form className="modal" onSubmit={addTask}><div className="modal-heading"><div><span className="eyebrow">EXECUTION</span><h2>Add task</h2></div><button type="button" className="icon-button" onClick={() => setShowTaskForm(false)} aria-label="Close"><X size={18} /></button></div><label>Task<input required autoFocus value={taskText} onChange={(e) => setTaskText(e.target.value)} placeholder="What needs to happen next?" /></label><div className="modal-note"><CloudOff size={16} /> Saved on this device until cloud sync is configured.</div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowTaskForm(false)}>Cancel</button><button className="primary-button" type="submit">Save task</button></div></form></div>}
+      {showTaskForm && <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowTaskForm(false); }}><form className="modal" onSubmit={addTask}><div className="modal-heading"><div><span className="eyebrow">EXECUTION</span><h2>Add task</h2></div><button type="button" className="icon-button" onClick={() => setShowTaskForm(false)} aria-label="Close"><X size={18} /></button></div><label>Task<input required autoFocus value={taskText} onChange={(e) => setTaskText(e.target.value)} placeholder="What needs to happen next?" /></label><div className="modal-note"><CloudOff size={16} /> Saved to your account when online; cached locally when offline.</div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowTaskForm(false)}>Cancel</button><button className="primary-button" type="submit">Save task</button></div></form></div>}
     </main>
   );
 }
