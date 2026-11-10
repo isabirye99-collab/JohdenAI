@@ -1,0 +1,11 @@
+{
+  "name": "Johden AI Business Manager",
+  "short_name": "Johden AI",
+  "description": "AI-assisted business management for Johden Business Consultancy Services",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f7f6",
+  "theme_color": "#971b1e",
+  "orientation": "portrait-primary",
+  "icons": []
+}
