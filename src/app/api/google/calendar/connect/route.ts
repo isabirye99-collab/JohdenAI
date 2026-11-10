@@ -1,0 +1,37 @@
+import { randomBytes } from "node:crypto";
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { googleRedirectUri } from "@/lib/google-calendar";
+
+export const runtime = "nodejs";
+
+export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.redirect(new URL("/login", "https://johdenai.netlify.app"));
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    return NextResponse.redirect(new URL("/dashboard?calendar=setup_error", "https://johdenai.netlify.app"));
+  }
+
+  const state = randomBytes(32).toString("hex");
+  const googleUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  googleUrl.searchParams.set("client_id", clientId);
+  googleUrl.searchParams.set("redirect_uri", googleRedirectUri());
+  googleUrl.searchParams.set("response_type", "code");
+  googleUrl.searchParams.set("scope", "https://www.googleapis.com/auth/calendar.freebusy");
+  googleUrl.searchParams.set("access_type", "offline");
+  googleUrl.searchParams.set("prompt", "consent");
+  googleUrl.searchParams.set("state", state);
+
+  const response = NextResponse.redirect(googleUrl);
+  response.cookies.set("johden_google_oauth_state", state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/api/google/calendar/callback",
+    maxAge: 600,
+  });
+  return response;
+}
