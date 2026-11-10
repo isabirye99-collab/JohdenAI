@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
   Activity, ArrowUpRight, Bell, BriefcaseBusiness, CalendarDays, Check,
   ChevronRight, CircleHelp, Clock3, Cloud, CloudOff, Command, FileText,
-  LayoutDashboard, ListTodo, Menu, MessageCircle, Plus, Search, Send,
-  Settings2, ShieldCheck, Sparkles, Target, Users, X
+  LayoutDashboard, ListTodo, MessageCircle, Plus, Search, Send,
+  Settings2, ShieldCheck, Sparkles, Target, X
 } from "lucide-react";
 
 type Prospect = {
@@ -84,7 +85,7 @@ export default function Home() {
   const pending = drafts.filter((d) => d.status === "Needs approval").length;
   const filteredProspects = useMemo(() => prospects.filter((p) => [p.company, p.contact, p.industry, p.stage].join(" ").toLowerCase().includes(query.toLowerCase())), [prospects, query]);
 
-  function addProspect(e: React.FormEvent<HTMLFormElement>) {
+  function addProspect(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!company.trim()) return;
     setProspects((old) => [{ id: crypto.randomUUID(), company: company.trim(), contact: contact.trim() || "Not yet verified", industry, stage: "New prospect", nextStep: "Research company and verify contact", source: "Manually added", updatedAt: "Just now" }, ...old]);
@@ -135,7 +136,7 @@ export default function Home() {
   );
 }
 
-function PageHeading({ eyebrow, title, subtitle, action }: { eyebrow: string; title: string; subtitle: string; action?: React.ReactNode }) {
+function PageHeading({ eyebrow, title, subtitle, action }: { eyebrow: string; title: string; subtitle: string; action?: ReactNode }) {
   return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{subtitle}</p></div>{action}</div>;
 }
 
