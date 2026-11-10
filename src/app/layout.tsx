@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import ServiceWorker from "./ServiceWorker";
 
 export const metadata: Metadata = {
   title: "Johden AI Business Manager",
@@ -19,7 +20,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body><ServiceWorker />{children}</body>
     </html>
   );
 }
