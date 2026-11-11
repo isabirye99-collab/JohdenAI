@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { googleRedirectUri } from "@/lib/google-calendar";
+import { getGoogleCalendarEnv, googleRedirectUri } from "@/lib/google-calendar";
 
 export const runtime = "nodejs";
 
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(new URL("/login", origin));
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientId = getGoogleCalendarEnv("GOOGLE_CLIENT_ID");
   if (!clientId) {
     return NextResponse.redirect(new URL("/dashboard?calendar=setup_error", origin));
   }
