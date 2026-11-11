@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
         code,
         client_id: clientId,
         client_secret: clientSecret,
-        redirect_uri: googleRedirectUri(),
+        redirect_uri: googleRedirectUri(origin),
         grant_type: "authorization_code",
       }),
       cache: "no-store",
