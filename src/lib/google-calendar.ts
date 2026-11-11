@@ -1,9 +1,30 @@
 import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
+type GoogleCalendarEnvName =
+  | "GOOGLE_CLIENT_ID"
+  | "GOOGLE_CLIENT_SECRET"
+  | "GOOGLE_TOKEN_ENCRYPTION_KEY"
+  | "NEXT_PUBLIC_SUPABASE_URL"
+  | "SUPABASE_SERVICE_ROLE_KEY"
+  | "GOOGLE_REDIRECT_URI"
+  | "NEXT_PUBLIC_SITE_URL";
+
+export function getGoogleCalendarEnv(name: GoogleCalendarEnvName) {
+  try {
+    const cloudflareEnv = getCloudflareContext().env as Record<string, unknown>;
+    const value = cloudflareEnv[name];
+    if (typeof value === "string" && value.length > 0) return value;
+  } catch {
+    // Local Node.js development uses process.env instead.
+  }
+  return process.env[name];
+}
+
 function encryptionKey() {
-  const value = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
+  const value = getGoogleCalendarEnv("GOOGLE_TOKEN_ENCRYPTION_KEY");
   if (!value || !/^[0-9a-fA-F]{64}$/.test(value)) {
     throw new Error("GOOGLE_TOKEN_ENCRYPTION_KEY must be a 64-character hexadecimal key.");
   }
@@ -30,8 +51,8 @@ export function decryptGoogleToken(value: string) {
 }
 
 export function createGoogleTokenAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = getGoogleCalendarEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const key = getGoogleCalendarEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) throw new Error("Server-side Supabase credentials are missing.");
   return createSupabaseClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
@@ -39,6 +60,6 @@ export function createGoogleTokenAdminClient() {
 }
 
 export function googleRedirectUri(origin?: string) {
-  const baseUrl = origin || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-  return process.env.GOOGLE_REDIRECT_URI || new URL("/api/google/calendar/callback", baseUrl).toString();
+  const baseUrl = origin || getGoogleCalendarEnv("NEXT_PUBLIC_SITE_URL") || "http://localhost:3000";
+  return getGoogleCalendarEnv("GOOGLE_REDIRECT_URI") || new URL("/api/google/calendar/callback", baseUrl).toString();
 }
