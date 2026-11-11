@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   createGoogleTokenAdminClient,
   encryptGoogleToken,
+  getGoogleCalendarEnv,
   googleRedirectUri,
 } from "@/lib/google-calendar";
 
@@ -31,8 +32,8 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   if (!code || request.nextUrl.searchParams.has("error")) return redirectToDashboard("cancelled");
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const clientId = getGoogleCalendarEnv("GOOGLE_CLIENT_ID");
+  const clientSecret = getGoogleCalendarEnv("GOOGLE_CLIENT_SECRET");
   if (!clientId || !clientSecret) return redirectToDashboard("setup_error");
 
   try {
