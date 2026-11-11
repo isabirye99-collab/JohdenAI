@@ -47,3 +47,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .sign-out-button{border:1px solid #e7d7d5;background:#fff;color:var(--red);border-radius:7px;padding:8px 11px;font-size:10px;font-weight:700}
 .sign-out-button:hover{background:var(--red-soft)}
 @media(max-width:560px){.auth-card{padding:29px 23px}.topbar{padding:0 14px}.top-actions{gap:7px}.top-actions .icon-button{display:none}}
+
+
+.calendar-agenda{max-width:800px;margin:0 0 14px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:18px 20px}
+.calendar-agenda-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.calendar-agenda-heading h2{font:700 14px Manrope,sans-serif;margin:0 0 5px}
+.calendar-agenda-heading p{font-size:10px;color:var(--muted);margin:0}
+.calendar-agenda-row{display:grid;grid-template-columns:145px 1fr auto;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #efeeec;font-size:11px}
+.calendar-agenda-date{font-size:10px;color:var(--red);font-weight:700}
+.calendar-agenda-status{font-size:9px;color:var(--green);font-weight:700}
+.calendar-agenda-row.done>span:nth-child(2){text-decoration:line-through;color:#92939a}
+.calendar-agenda-row.done .calendar-agenda-status{color:#92939a}
+@media(max-width:560px){.calendar-agenda{padding:14px}.calendar-agenda-heading{align-items:flex-start;flex-direction:column}.calendar-agenda-row{grid-template-columns:1fr auto;gap:5px}.calendar-agenda-date{grid-column:1/-1}}
