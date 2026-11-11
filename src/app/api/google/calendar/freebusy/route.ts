@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   createGoogleTokenAdminClient,
   decryptGoogleToken,
+  getGoogleCalendarEnv,
 } from "@/lib/google-calendar";
 
 export const runtime = "nodejs";
@@ -40,8 +41,8 @@ export async function POST(request: NextRequest) {
     const stored = data as StoredToken | null;
     if (!stored) return NextResponse.json({ error: "calendar_not_connected" }, { status: 409 });
 
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const clientId = getGoogleCalendarEnv("GOOGLE_CLIENT_ID");
+    const clientSecret = getGoogleCalendarEnv("GOOGLE_CLIENT_SECRET");
     if (!clientId || !clientSecret) throw new Error("Google OAuth configuration is missing.");
 
     const refreshResponse = await fetch("https://oauth2.googleapis.com/token", {
