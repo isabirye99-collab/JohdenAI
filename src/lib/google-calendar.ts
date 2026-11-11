@@ -38,6 +38,7 @@ export function createGoogleTokenAdminClient() {
   });
 }
 
-export function googleRedirectUri() {
-  return process.env.GOOGLE_REDIRECT_URI || "https://johdenai.netlify.app/api/google/calendar/callback";
+export function googleRedirectUri(origin?: string) {
+  const baseUrl = origin || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  return process.env.GOOGLE_REDIRECT_URI || new URL("/api/google/calendar/callback", baseUrl).toString();
 }
