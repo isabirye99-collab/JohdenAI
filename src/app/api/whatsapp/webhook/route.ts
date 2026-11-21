@@ -36,26 +36,57 @@ async function verifyMetaSignature(
   return safeEqual(expected, signatureHeader);
 }
 
-async function getWebhookSecret(name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET"): Promise<string | undefined> {
-  // Resolve the context asynchronously so OpenNext obtains the environment
-  // attached to the current Worker request, then read the named secret.
+async function getWebhookSecret(
+  name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET",
+): Promise<string | undefined> {
+  let contextRead = false;
+  let contextBindingPresent = false;
+  let contextErrorName: string | undefined;
+
+  // Read the environment attached to this incoming Cloudflare Worker request.
   try {
     const context = await getCloudflareContext({ async: true });
-    const bindings = context.env as unknown as Record<string, unknown>;
-    const value = bindings[name];
-    if (typeof value === "string" && value.length > 0) return value;
-  } catch {
-    // Keep the explicit process.env fallback for supported Worker runtimes.
+    contextRead = true;
+    const bindings = context.env as unknown as Record<string, unknown> | undefined;
+    const value = bindings?.[name];
+
+    if (typeof value === "string" && value.length > 0) {
+      console.info("WhatsApp webhook configuration lookup", {
+        name,
+        source: "cloudflare-context",
+        configured: true,
+      });
+      return value;
+    }
+
+    contextBindingPresent = value !== undefined && value !== null;
+  } catch (error) {
+    contextErrorName =
+      error instanceof Error ? error.name : "UnknownContextError";
   }
 
-  const processValue =
-    name === "WHATSAPP_VERIFY_TOKEN"
-      ? process.env.WHATSAPP_VERIFY_TOKEN
-      : process.env.META_APP_SECRET;
+  // Node.js compatibility can expose Worker bindings through process.env.
+  const processValue = process.env[name];
+  if (typeof processValue === "string" && processValue.length > 0) {
+    console.info("WhatsApp webhook configuration lookup", {
+      name,
+      source: "process-env",
+      configured: true,
+      contextRead,
+    });
+    return processValue;
+  }
 
-  return typeof processValue === "string" && processValue.length > 0
-    ? processValue
-    : undefined;
+  // Log availability metadata only. Never log secret values.
+  console.error("WhatsApp webhook secret unavailable to the running Worker", {
+    name,
+    contextRead,
+    contextBindingPresent,
+    processEnvPresent: typeof processValue === "string" && processValue.length > 0,
+    ...(contextErrorName ? { contextErrorName } : {}),
+  });
+
+  return undefined;
 }
 
 /** Meta webhook verification handshake. */
