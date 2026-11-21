@@ -37,18 +37,14 @@ async function verifyMetaSignature(
 }
 
 function getWebhookSecret(name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET"): string | undefined {
-  // Cloudflare Worker secrets are bindings. Read them from the OpenNext
-  // runtime context rather than relying on Node's process.env in production.
+  // Worker secrets are runtime bindings, not guaranteed to be present in process.env.
   const context = getCloudflareContext();
-  const value = context.env[name];
+  const bindings = context.env as unknown as Record<string, unknown>;
+  const value = bindings[name];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/**
- * Meta webhook verification handshake.
- * Configure WHATSAPP_VERIFY_TOKEN as a server-side Cloudflare Worker secret
- * and use the same value in Meta's Verify token field.
- */
+/** Meta webhook verification handshake. */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const mode = params.get("hub.mode");
@@ -127,10 +123,9 @@ export async function POST(request: NextRequest) {
   try {
     const payload = JSON.parse(new TextDecoder().decode(rawBody)) as {
       object?: string;
-      entry?: Array<{ changes?: Array<{ field?: string }> }>;
+      entry?: Array<{ changes?: Array<{ field?: string }> }> ;
     };
 
-    // Log only event categories, never message contents or phone numbers.
     const fields = (payload.entry ?? []).flatMap((entry) =>
       (entry.changes ?? []).map((change) => change.field ?? "unknown"),
     );
