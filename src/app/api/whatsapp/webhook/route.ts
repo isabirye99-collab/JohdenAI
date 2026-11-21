@@ -1,3 +1,4 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -35,17 +36,31 @@ async function verifyMetaSignature(
   return safeEqual(expected, signatureHeader);
 }
 
-/**
- * Meta webhook verification handshake.
- * Configure WHATSAPP_VERIFY_TOKEN as a server-side Cloudflare secret and use
- * the same value in Meta's Verify token field.
- */
+function getWebhookSecret(name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET"): string | undefined {
+  // Worker secrets are runtime bindings, not guaranteed to be present in process.env.
+  const context = getCloudflareContext();
+  const bindings = context.env as unknown as Record<string, unknown>;
+  const value = bindings[name];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/** Meta webhook verification handshake. */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const mode = params.get("hub.mode");
   const token = params.get("hub.verify_token");
   const challenge = params.get("hub.challenge");
-  const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN;
+  let expectedToken: string | undefined;
+
+  try {
+    expectedToken = getWebhookSecret("WHATSAPP_VERIFY_TOKEN");
+  } catch (error) {
+    console.error("Unable to read WhatsApp webhook verification configuration", error);
+    return NextResponse.json(
+      { error: "Webhook verification configuration is unavailable." },
+      { status: 503 },
+    );
+  }
 
   if (!expectedToken) {
     return NextResponse.json(
@@ -57,7 +72,10 @@ export async function GET(request: NextRequest) {
   if (mode === "subscribe" && token && safeEqual(token, expectedToken) && challenge) {
     return new Response(challenge, {
       status: 200,
-      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
     });
   }
 
@@ -69,7 +87,18 @@ export async function GET(request: NextRequest) {
  * message processing, persistence, and sending are deliberately not enabled yet.
  */
 export async function POST(request: NextRequest) {
-  const appSecret = process.env.META_APP_SECRET;
+  let appSecret: string | undefined;
+
+  try {
+    appSecret = getWebhookSecret("META_APP_SECRET");
+  } catch (error) {
+    console.error("Unable to read WhatsApp webhook signature configuration", error);
+    return NextResponse.json(
+      { error: "Webhook signature configuration is unavailable." },
+      { status: 503 },
+    );
+  }
+
   if (!appSecret) {
     return NextResponse.json(
       { error: "Webhook signature verification is not configured." },
@@ -94,10 +123,9 @@ export async function POST(request: NextRequest) {
   try {
     const payload = JSON.parse(new TextDecoder().decode(rawBody)) as {
       object?: string;
-      entry?: Array<{ changes?: Array<{ field?: string }> }>;
+      entry?: Array<{ changes?: Array<{ field?: string }> }> ;
     };
 
-    // Log only event categories, never message contents or phone numbers.
     const fields = (payload.entry ?? []).flatMap((entry) =>
       (entry.changes ?? []).map((change) => change.field ?? "unknown"),
     );

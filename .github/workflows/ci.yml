@@ -21,5 +21,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Run production build
+      - name: Run Next.js production build
         run: npm run build
+      - name: Build Cloudflare Worker with OpenNext
+        run: npm run cf:build
