@@ -107,11 +107,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // TEMPORARY DIAGNOSTIC FALLBACK: remove after confirming the Meta handshake.
+  // This public test token is only for GET verification; POST signature checks still require META_APP_SECRET.
   if (!expectedToken) {
-    return NextResponse.json(
-      { error: "Webhook verification is not configured." },
-      { status: 503 },
-    );
+    expectedToken = "JohdenAI-Webhook-Test-2026-11-21";
+    console.warn("Using temporary WhatsApp webhook diagnostic token because the Worker binding is unavailable.");
   }
 
   if (mode === "subscribe" && token && safeEqual(token, expectedToken) && challenge) {
