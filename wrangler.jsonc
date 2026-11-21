@@ -3,7 +3,10 @@
   "name": "johdenai",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-11",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
   "upload_source_maps": true,
   "keep_vars": true,
   "assets": {
