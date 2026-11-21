@@ -36,17 +36,16 @@ async function verifyMetaSignature(
   return safeEqual(expected, signatureHeader);
 }
 
-function getWebhookSecret(name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET"): string | undefined {
-  // Read Cloudflare bindings first. OpenNext documents runtime environment
-  // variables as process.env values; use explicit property access because
-  // Next.js bundlers may not preserve dynamic process.env[name] lookups.
+async function getWebhookSecret(name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET"): Promise<string | undefined> {
+  // Resolve the context asynchronously so OpenNext obtains the environment
+  // attached to the current Worker request, then read the named secret.
   try {
-    const context = getCloudflareContext();
+    const context = await getCloudflareContext({ async: true });
     const bindings = context.env as unknown as Record<string, unknown>;
     const value = bindings[name];
     if (typeof value === "string" && value.length > 0) return value;
   } catch {
-    // The process.env fallback remains available in the Worker runtime.
+    // Keep the explicit process.env fallback for supported Worker runtimes.
   }
 
   const processValue =
@@ -68,7 +67,7 @@ export async function GET(request: NextRequest) {
   let expectedToken: string | undefined;
 
   try {
-    expectedToken = getWebhookSecret("WHATSAPP_VERIFY_TOKEN");
+    expectedToken = await getWebhookSecret("WHATSAPP_VERIFY_TOKEN");
   } catch (error) {
     console.error("Unable to read WhatsApp webhook verification configuration", error);
     return NextResponse.json(
@@ -105,7 +104,7 @@ export async function POST(request: NextRequest) {
   let appSecret: string | undefined;
 
   try {
-    appSecret = getWebhookSecret("META_APP_SECRET");
+    appSecret = await getWebhookSecret("META_APP_SECRET");
   } catch (error) {
     console.error("Unable to read WhatsApp webhook signature configuration", error);
     return NextResponse.json(
