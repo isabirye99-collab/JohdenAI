@@ -37,19 +37,23 @@ async function verifyMetaSignature(
 }
 
 function getWebhookSecret(name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET"): string | undefined {
-  // OpenNext exposes Cloudflare runtime bindings through context.env. Depending
-  // on how a Worker variable/secret was configured, it may instead be exposed
-  // through process.env, so check both without ever logging the secret itself.
+  // Read Cloudflare bindings first. OpenNext documents runtime environment
+  // variables as process.env values; use explicit property access because
+  // Next.js bundlers may not preserve dynamic process.env[name] lookups.
   try {
     const context = getCloudflareContext();
     const bindings = context.env as unknown as Record<string, unknown>;
     const value = bindings[name];
     if (typeof value === "string" && value.length > 0) return value;
   } catch {
-    // Fall through to the supported process.env runtime-variable path.
+    // The process.env fallback remains available in the Worker runtime.
   }
 
-  const processValue = process.env[name];
+  const processValue =
+    name === "WHATSAPP_VERIFY_TOKEN"
+      ? process.env.WHATSAPP_VERIFY_TOKEN
+      : process.env.META_APP_SECRET;
+
   return typeof processValue === "string" && processValue.length > 0
     ? processValue
     : undefined;
