@@ -37,11 +37,22 @@ async function verifyMetaSignature(
 }
 
 function getWebhookSecret(name: "WHATSAPP_VERIFY_TOKEN" | "META_APP_SECRET"): string | undefined {
-  // Worker secrets are runtime bindings, not guaranteed to be present in process.env.
-  const context = getCloudflareContext();
-  const bindings = context.env as unknown as Record<string, unknown>;
-  const value = bindings[name];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  // OpenNext exposes Cloudflare runtime bindings through context.env. Depending
+  // on how a Worker variable/secret was configured, it may instead be exposed
+  // through process.env, so check both without ever logging the secret itself.
+  try {
+    const context = getCloudflareContext();
+    const bindings = context.env as unknown as Record<string, unknown>;
+    const value = bindings[name];
+    if (typeof value === "string" && value.length > 0) return value;
+  } catch {
+    // Fall through to the supported process.env runtime-variable path.
+  }
+
+  const processValue = process.env[name];
+  return typeof processValue === "string" && processValue.length > 0
+    ? processValue
+    : undefined;
 }
 
 /** Meta webhook verification handshake. */
